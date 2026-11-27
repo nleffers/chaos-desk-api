@@ -1,0 +1,39 @@
+# Version control & CI
+.git
+.gitignore
+.github
+
+# Docker files
+.dockerignore
+Dockerfile*
+compose*.yaml
+compose*.yml
+docker-compose*.yaml
+docker-compose*.yml
+
+# Logs, temporary files, and local storage
+/log/*
+!/log/.keep
+/tmp/*
+!/tmp/.keep
+/storage/*
+!/storage/.keep
+
+# Secrets and environment variables
+.env*
+/config/**/*.key
+
+# Local dependencies & precompiled assets (rebuilt inside the container)
+/.bundle
+/vendor/bundle
+
+# Testing, coverage, and editor files
+/coverage
+/test
+/spec
+.byebug_history
+.rspec
+.idea
+.vscode
+*.swp
+.DS_Store
