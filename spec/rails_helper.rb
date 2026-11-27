@@ -31,6 +31,14 @@ require 'rspec/rails'
 # If you are not using ActiveRecord, you can remove these lines.
 begin
   ActiveRecord::Migration.maintain_test_schema!
+  # Still connected as the superuser here: grant the app role, then run the whole suite as it.
+  ActiveRecord::Base.connection.execute(<<~SQL)
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO chaosdesk_app;
+    GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO chaosdesk_app;
+  SQL
+  ActiveRecord::Base.establish_connection(
+    ActiveRecord::Base.connection_db_config.configuration_hash.merge(username: "chaosdesk_app", password: ENV.fetch("APP_PASSWORD"))
+  )
 rescue ActiveRecord::PendingMigrationError => e
   abort e.to_s.strip
 end
