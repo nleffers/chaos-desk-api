@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Default connection variables (override via environment or .env)
+PGHOST="${PGHOST:-localhost}"
+PGPORT="${PGPORT:-5432}"
+PGUSER="${PGUSER:-postgres}"
+MAINTENANCE_DB="${MAINTENANCE_DB:-postgres}"
+OWNER_ROLE="${OWNER_ROLE:-chaosdesk_owner}"
+MAX_TRIES="${MAX_TRIES:-30}"
+
+: "${PGPASSWORD:?PGPASSWORD must be set}"
+: "${OWNER_PASSWORD:?OWNER_PASSWORD must be set}"
+: "${APP_PASSWORD:?APP_PASSWORD must be set}"
+: "${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set}"
+
+PSQL_BASE=(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -v ON_ERROR_STOP=1 -X -q)
+
+echo "==> Waiting for PostgreSQL at ${PGHOST}:${PGPORT}..."
+tries=0
+until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; do
+  tries=$((tries + 1))
+  if [ "$tries" -ge "$MAX_TRIES" ]; then
+    echo "Error: PostgreSQL at ${PGHOST}:${PGPORT} was not ready after ${MAX_TRIES} attempts." >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+echo "==> Applying cluster-wide roles from db/roles.sql..."
+"${PSQL_BASE[@]}" -d "$MAINTENANCE_DB" \
+  -v owner_password="$OWNER_PASSWORD" \
+  -v app_password="$APP_PASSWORD" \
+  -v admin_password="$ADMIN_PASSWORD" \
+  -f "$(dirname "$0")/../db/roles.sql"
+
+for db in "$@"; do
+  echo "==> Checking database '${db}'..."
+  db_exists=$("${PSQL_BASE[@]}" -d "$MAINTENANCE_DB" -tAq -v db_name="$db" <<<"SELECT 1 FROM pg_database WHERE datname = :'db_name'")
+
+  if [ "$db_exists" != "1" ]; then
+    echo "==> Creating database '${db}' owned by '${OWNER_ROLE}'..."
+    "${PSQL_BASE[@]}" -d "$MAINTENANCE_DB" -v db_name="$db" -v owner_role="$OWNER_ROLE" <<-SQL
+      SELECT format('CREATE DATABASE %I OWNER %I', :'db_name', :'owner_role')\gexec
+SQL
+  else
+    echo "==> Database '${db}' already exists."
+  fi
+
+  echo "==> Applying grants from db/grants.sql to '${db}'..."
+  "${PSQL_BASE[@]}" -d "$db" \
+    -v chaosdesk_db="$db" \
+    -f "$(dirname "$0")/../db/grants.sql"
+done
+
+echo "==> Database bootstrap complete."
