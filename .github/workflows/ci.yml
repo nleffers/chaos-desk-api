@@ -100,6 +100,14 @@ jobs:
           which pg_dump
           pg_dump --version
 
+      - name: Bootstrap database
+        run: bin/db-bootstrap chaos_desk_api_test
+        env:
+          PGPASSWORD: password
+          OWNER_PASSWORD: owner_password
+          APP_PASSWORD: app_password
+          ADMIN_PASSWORD: admin_password
+
       - name: Check db/structure.sql for drift
         run: |
           bin/rails db:migrate
