@@ -1,0 +1,153 @@
+name: CI
+
+# Triggers: When the pipeline runs
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  scan:
+    # Runner: Virtual machine environment
+    runs-on: ubuntu-24.04
+
+    # Steps: Sequential tasks to execute
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true # Automatically installs and caches gems
+
+      - name: Run audit
+        run: bin/bundler-audit
+
+      - name: Run Brakeman
+        run: bin/brakeman --quiet --no-pager --exit-on-warn --exit-on-error
+
+  lint:
+    # Runner: Virtual machine environment
+    runs-on: ubuntu-24.04
+
+    # Steps: Sequential tasks to execute
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true # Automatically installs and caches gems
+
+      - name: Run linter
+        run: bin/rubocop
+
+  test:
+    # Runner: Virtual machine environment
+    runs-on: ubuntu-24.04
+
+    # Spin up a PostgreSQL database container for tests
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: chaos_desk_api_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: postgres://postgres:password@localhost:5432/chaos_desk_api_test
+      PGPASSWORD: password
+      OWNER_PASSWORD: owner_password
+      APP_PASSWORD: app_password
+      ADMIN_PASSWORD: admin_password
+
+    # Steps: Sequential tasks to execute
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true # Automatically installs and caches gems
+
+      - name: Install PostgreSQL 18 Client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common ca-certificates
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+
+      - name: Verify PostgreSQL Client Version
+        run: |
+          which pg_dump
+          pg_dump --version
+
+      - name: Bootstrap database
+        run: bin/db-bootstrap chaos_desk_api_test
+
+      - name: Check db/structure.sql for drift
+        run: |
+          bin/rails db:migrate
+          bin/rails db:schema:dump
+          if ! git diff --exit-code db/structure.sql; then
+            echo "::error file=db/structure.sql::db/structure.sql is out of sync with migrations. Run 'bin/rails db:migrate' locally and commit the updated file."
+            exit 1
+          fi
+
+      - name: Prepare database
+        run: bin/rails db:test:prepare
+
+      - name: Run test suite
+        run: bundle exec rspec
+
+  image:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      packages: write
+
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/nleffers/chaos-desk-api:${{ github.sha }}
