@@ -75,6 +75,10 @@ jobs:
     env:
       RAILS_ENV: test
       DATABASE_URL: postgres://postgres:password@localhost:5432/chaos_desk_api_test
+      PGPASSWORD: password
+      OWNER_PASSWORD: owner_password
+      APP_PASSWORD: app_password
+      ADMIN_PASSWORD: admin_password
 
     # Steps: Sequential tasks to execute
     steps:
@@ -102,11 +106,6 @@ jobs:
 
       - name: Bootstrap database
         run: bin/db-bootstrap chaos_desk_api_test
-        env:
-          PGPASSWORD: password
-          OWNER_PASSWORD: owner_password
-          APP_PASSWORD: app_password
-          ADMIN_PASSWORD: admin_password
 
       - name: Check db/structure.sql for drift
         run: |
