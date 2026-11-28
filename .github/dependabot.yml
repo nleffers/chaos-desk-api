@@ -1,16 +1,10 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-
 version: 2
 updates:
-  # 1. Ruby Gems (Gemfile & Gemfile.lock)
+  # Ruby Gems (Gemfile & Gemfile.lock)
   - package-ecosystem: "bundler"
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
     open-pull-requests-limit: 10
     # Group minor/patch updates to reduce PR noise
     groups:
@@ -26,14 +20,8 @@ updates:
         patterns:
           - "rubocop*"
 
-  # 2. GitHub Actions (.github/workflows)
+  # GitHub Actions (.github/workflows)
   - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-
-  # 3. Docker (Dockerfile & compose.yaml)
-  - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
